@@ -1,10 +1,14 @@
 import re
 import pickle
 import os
+import sys
+import math
 
+from stemmer import PorterStemmer
+ps = PorterStemmer()
 
 def index(pickle_filename):
-    d = {}
+    term_dict = {}
     
     filelist = os.listdir('data')
     
@@ -18,7 +22,10 @@ def index(pickle_filename):
         print 'processing ', file
         doc_count += 1
         doc_id = doc_count
-        docs[file] = doc_id
+        docs[doc_id] = ({'link':file,
+                      'vector':{}
+                      }) 
+        
         
         f = open(os.path.join('data',file))
         
@@ -27,20 +34,51 @@ def index(pickle_filename):
         wl_ = re.split( """[\s\.,/;:"'\?\{\}\[\]\\\|`~!@#\$%\^&\*\(\)_\+-=]""", s)
         wl = []
         for w in wl_:        
-            if w in stopwords or w == '':
+            if not (w in stopwords or w == ''):
+                w = w.lower()
+                w = ps.stem(w, 0, len(w)-1)
                 wl.append(w)
         
         for w in wl:
-            if not d.has_key(w):
-                d[w] = { 'df':0, 'tfs':{} }
             
-            if not d[w]['tfs'].has_key(doc_id):
-                 d[w]['tfs'][doc_id] = 0
-            d[w]['tfs'][doc_id] += 1
+            if not docs[doc_id]['vector'].has_key(w):
+                docs[doc_id]['vector'][w] = 0
+            docs[doc_id]['vector'][w] += 1
+            
+            if not term_dict.has_key(w):
+                term_dict[w] = { 'df':0, 'tfs':{} }
+            
+            if not term_dict[w]['tfs'].has_key(doc_id):
+                 term_dict[w]['tfs'][doc_id] = 0
+            term_dict[w]['tfs'][doc_id] += 1
     
-    for w in d.keys():
-        d[w]['df'] = len(d[w]['tfs'].keys())
+        for k in docs[doc_id]['vector'].keys():
+            docs[doc_id]['vector'][k] = 1 + math.log( docs[doc_id]['vector'][k] ) 
+    
+        norm = 0
+        for v in docs[doc_id]['vector'].values():
+            norm += v*v
+        norm = norm**0.5
+        for k in docs[doc_id]['vector'].keys():
+            docs[doc_id]['vector'][k] /= norm
+            
+    
+    for w in term_dict.keys():
+        term_dict[w]['df'] = len(term_dict[w]['tfs'].keys())
     
     pickle.dump({'doc_count':doc_count, 
-                 'd':d}, 
+                 'term_dict':term_dict,
+                 'docs':docs}, 
                 open(pickle_filename, 'w'))
+
+
+if __name__ == '__main__':
+    
+    try:
+        index_file = sys.argv[1]
+    except:
+        print "usage : python indexer.py <index_file>"
+        sys.exit()
+        
+    index(index_file)
+    
